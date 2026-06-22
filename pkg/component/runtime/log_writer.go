@@ -27,6 +27,8 @@ type logSource uint8
 const (
 	logSourceStdout logSource = 0
 	logSourceStderr logSource = 1
+
+	otelAgentComponentPrefix = "_agent-component"
 )
 
 // logWriter is an `io.Writer` that takes lines and passes them through the logger.
@@ -157,6 +159,11 @@ func (r *logWriter) handleJSON(line string) bool {
 		}
 	}
 	if allowedLvl.Enabled(lvl) {
+		// Native OTel components don't distinguish operational logs from logs that may
+		// contain customer data so all their lines go to the events stream
+		if isNativeOtelComponentLine(evt) {
+			fields = append(fields, zap.String("log.type", "event"))
+		}
 		_ = r.loggerCore.Write(zapcore.Entry{
 			Level:   lvl,
 			Time:    ts,
@@ -254,4 +261,9 @@ func getUnitId(evt map[string]interface{}) string {
 		}
 	}
 	return ""
+}
+
+func isNativeOtelComponentLine(evt map[string]interface{}) bool {
+	id := getStrVal(evt, "otelcol.component.id")
+	return id != "" && !strings.Contains(id, otelAgentComponentPrefix)
 }
